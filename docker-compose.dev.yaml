@@ -1,0 +1,65 @@
+name: app-music-mobile  # Nom du projet Docker
+
+services:
+  app-mobile:
+    # Définition de la construction de l'image Docker à partir d'un Dockerfile spécifique
+    build:
+      context: .  # Utilise le contexte du répertoire courant
+      dockerfile: ./deploy/php-apache.Dockerfile  # Chemin du Dockerfile personnalisé pour Apache et PHP
+    container_name: php-apache-mobile  # Nom du conteneur
+    volumes:
+      - ./api:/var/www/html  # Monte le répertoire local ./api dans /var/www/html du conteneur
+    ports:
+      - "8742:80"  # Mappe le port 80 du conteneur au port 8742 de la machine hôte
+    restart: always  # Redémarre automatiquement le conteneur en cas d'échec
+    networks:
+      - public  # Connecte le conteneur au réseau public
+      - private  # Connecte également le conteneur au réseau privé
+    depends_on:
+      db:
+        condition: service_healthy  # Ce service dépend de la base de données et ne démarre que lorsque la base est prête
+
+  db:
+    image: postgres:latest  # Utilise l'image officielle PostgreSQL
+    container_name: postgres_db-mobile  # Nom du conteneur pour la base de données
+    environment:
+      POSTGRES_USER: admin  # Utilisateur de la base de données
+      POSTGRES_PASSWORD_FILE: /run/secrets/db_postgres_password  # Mot de passe chargé depuis un secret
+      POSTGRES_DB: db  # Nom de la base de données
+    volumes:
+      - db-data:/var/lib/postgresql/data  # Volume persistant pour stocker les données de la base de données
+    networks:
+      - private  # Connecte la base de données uniquement au réseau privé pour des raisons de sécurité
+    secrets:
+      - db_postgres_password  # Charge un secret contenant le mot de passe de la base de données
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U admin"]  # Test de santé pour vérifier si PostgreSQL est prêt
+      interval: 30s  # Test effectué toutes les 30 secondes
+      timeout: 10s  # Le test échoue si la commande prend plus de 10 secondes
+      retries: 5  # Nombre d'essais avant de déclarer le service comme défectueux
+      start_period: 10s  # Délai d'attente avant de commencer les tests de santé
+
+  adminer:
+    image: adminer  # Utilise l'image officielle Adminer pour la gestion de la base de données via une interface web
+    container_name: adminer-mobile  # Nom du conteneur pour Adminer
+    ports:
+      - "8086:8080"  # Mappe le port 8080 du conteneur au port 8086 de la machine hôte
+    networks:
+      - private  # Connecte Adminer au réseau privé pour la gestion sécurisée de la base de données
+      - public  # Connecte Adminer également au réseau public pour y accéder depuis l'extérieur
+
+secrets:
+   db_postgres_password:
+     file: ./secrets/db_postgres_password.txt  # Charge le mot de passe PostgreSQL depuis un fichier secret
+
+configs:
+  db_init:
+    file: ./deploy/init.sql  # Charge un fichier SQL pour initialiser la base de données avec des tables ou des données par défaut
+
+volumes:
+  db-data:  # Volume persistant pour stocker les données de la base de données PostgreSQL
+
+networks:
+  public:  # Réseau public pour la communication externe
+  private:
+    internal: true  # Réseau privé uniquement pour la communication interne entre les services
